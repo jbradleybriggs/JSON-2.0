@@ -1,17 +1,18 @@
 class JSON2
 {
-    constructor(input)
+    constructor(input, evalScripts=false)
     {
         this.input = input ;
         this.cs = new CharStream(input) ;
         this.alphabet = 
-            {"KEY_VALUE_SEPERATOR": ":", 
+            {"KEY_VALUE_SEPERATOR": ":",
              "VALUE_TERMINATOR": ",",
              "OBJECT_START": "{",
              "ARRAY_START": "[",
              "OBJECT_END": "}",
              "ARRAY_END": "]",
              "SCRIPT": "~"};
+        this.evalScripts = evalScripts;
         this.obj = this.parse()[0] ;
     }
 
@@ -19,10 +20,11 @@ class JSON2
     {
         var key = "" ;
         var value = {};
+        var first = true ;
         var autoKey = 0 ;
         while (!this.cs.endOfStream())
         {
-            var next = this.cs.lookAhead(this.alphabet) ;
+            var next = this.cs.lookAhead(this.alphabet) ;   
             if (next == this.alphabet["OBJECT_START"])
             {
                 if (key == "")
@@ -30,7 +32,7 @@ class JSON2
                     key = autoKey ;
                     autoKey+=1 ;
                 }
-                this.cs.advance() ; //move past this brace
+                this.cs.advanceIgnoreWhiteSpace() ; //move past this brace
                 value[key] = this.parse() ;
                 key = "" ;
             }
@@ -44,7 +46,7 @@ class JSON2
                 }
                 var last = this.cs.readUntil("}", true) ;
                 if (last != "") value[key] = last ;
-                if (this.cs.lookAhead(this.alphabet) == ",") this.cs.advance() ;
+                if (this.cs.lookAhead(this.alphabet) == ",") this.cs.advanceIgnoreWhiteSpace() ;
                 return value ;
             }
             else if (next == this.alphabet["VALUE_TERMINATOR"])
@@ -64,7 +66,7 @@ class JSON2
                     key = autoKey ;
                     autoKey+=1 ;
                 }
-                this.cs.advance() ; //move past this brace
+                this.cs.advanceIgnoreWhiteSpace() ; //move past this brace
                 value[key] = this.parse() ;
                 key = "" ;
             }
@@ -78,7 +80,7 @@ class JSON2
                 }
                 var last = this.cs.readUntil("]", true) ;
                 if (last != "") value[key] = last ;
-                if (this.cs.lookAhead(this.alphabet) == ",") this.cs.advance() ;
+                if (this.cs.lookAhead(this.alphabet) == ",") this.cs.advanceIgnoreWhiteSpace() ;
                 return value ;
             }
             else if (next == this.alphabet["KEY_VALUE_SEPERATOR"])
@@ -88,32 +90,42 @@ class JSON2
             else if (next ==this.alphabet["SCRIPT"])
             {
                 key = this.cs.readUntil("~", true) ;
-
-                function insert(avalue, akey="")
+                var localAutoKey = 0 ;
+                if (key == "")
                 {
-                    if (akey == "")
-                    {
-                        akey = autoKey ;
-                        autoKey+=1 ;
-                    }
-                    value[akey] = avalue;
+                    key = localAutoKey ;
+                    localAutoKey+=1 ;
                 }
+                if (this.evalScripts)
+                {
+                    value[key] = {} ;
+                    function insert(avalue)
+                    {
+                        value[key] = avalue;
+                    }
+                    function insertKeyValue(akey, avalue)
+                    {
+                        
+                        if (akey == "")
+                        {
+                            akey = localAutoKey ;
+                            localAutoKey+=1 ;
+                        }
+                        value[key][akey] = avalue;
+                    }
 
-                var script = this.cs.readUntil("~", false) ;
-                eval(script) ;
-                if (this.cs.lookAhead(this.alphabet) == ",") this.cs.advance() ;
-            }
-            else if (next == this.alphabet["COMMENT"])
-            {
-
+                    var script = this.cs.readUntil("~", false) ;
+                    eval(script) ;
+                }
+                else
+                {
+                    var script = this.cs.readUntil("~", false) ;
+                    value[key] = script ;
+                }
+                if (this.cs.lookAhead(this.alphabet) == ",") this.cs.advanceIgnoreWhiteSpace() ;
             }
         }
         return value ;
-    }
-
-    unquote(string)
-    {
-
     }
 
     tabString(tabs)
@@ -159,9 +171,19 @@ class CharStream
         this.pointer = 0 ; // next char to be read
     }
 
-    advance()
+    advance(numOfChars=1)
     {
-        if (!this.endOfStream()) this.pointer++ ;
+        if (!this.endOfStream()) this.pointer+=numOfChars ;
+    }
+
+    advanceIgnoreWhiteSpace(numOfChars=1)
+    {
+        var count = 0 ;
+        while (!this.endOfStream() && count < numOfChars)
+        {
+            if (this.stash.charAt(this.pointer) != " ") count++ ;
+            this.advance() ;
+        }
     }
 
     endOfStream()
@@ -199,17 +221,19 @@ class CharStream
     lookAhead(someChars)
     {
         var tempPointer = this.pointer ;
+        var prevChar = "" ;
         while (!this.endOfStream())
         {
             var char = this.read() ;
             for (var key in someChars)
             {
-                if (someChars[key] == char)
+                if (someChars[key] == char && prevChar != '\u005c')
                 {
                     this.pointer = tempPointer ;
                     return someChars[key] ;
                 }
             }
+            var prevChar = char ;
         }
         this.pointer = tempPointer ;
         return undefined ;
@@ -238,7 +262,9 @@ class CharStream
 
 }
 
-var j = "{amounts~var obj=[123, 133, 1443, 112, 114]; for (var i=0; i<5; i++) insert(obj[i], key+ \" \" + i);~, size: 5}" ;
-//var j = "{ \"bob's array\": [1, 2, 3, 4], lamp #IGNORE THIS#light: \"7889 cents /*or anything really*/\", costs: {today: [1, 2, 3], yesterday: [4, 5, 6], script example~var x=0; for(var i=0; i<20; i++)x+=i; console.log(x); var obj = {\"key\": \"value\"}; ~} }" ;
+//var j = "{name: JSON 2.0 Example, scripted section: {amounts~var obj=[123, 133, 1443, 112, 114]; for (var i=0; i<5; i++) insert(obj[i]);~, size~insert(Object.keys(value).length,key)~}, An array: [4, 5, 6, 7, 8]}" ;
+var j = "{ \"bob's array\": [1, 2, 3, 4], lamp #IGNORE THIS#light: \"7889 cents /*or anything really*/\", costs: {today: [1, 2, 3], yesterday: [4, 5, 6], script generated~var x=0; for(var i=0; i<20; i++)x+=i; console.log(x); var obj = {\"some key\": \"some value\"}; insert(obj);~}}" ;
+//var j = "{fruits: [apples, pears, oranges], vegetables:[carrots, spinach, potato], stats:      {types: 2, total: 6}}" ;
+//var j = "{name: name here, \nsurname: surname here, script generated~for(var x=0; x<50; x+=0.5) insert(x);~, comments: are they possible?}" ;
 var j2 = new JSON2(j) ;
 console.log(j2.toString()) ;
