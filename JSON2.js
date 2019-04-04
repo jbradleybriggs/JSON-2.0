@@ -11,7 +11,8 @@ class JSON2
              "ARRAY_START": "[",
              "OBJECT_END": "}",
              "ARRAY_END": "]",
-             "SCRIPT": "~"};
+             "SCRIPT": "~",
+             "COMMENT": "#"};
         this.evalScripts = evalScripts;
         this.obj = this.parse()[0] ;
     }
@@ -123,6 +124,11 @@ class JSON2
                     value[key] = script ;
                 }
                 if (this.cs.lookAhead(this.alphabet) == ",") this.cs.advanceIgnoreWhiteSpace() ;
+            }
+            else if (next == this.alphabet["COMMENT"])
+            {
+                this.cs.readUntil("#") ; // read until the opening comment 
+                this.cs.readUntil("#") ; // 
             }
         }
         return value ;
@@ -263,8 +269,9 @@ class CharStream
 }
 
 //var j = "{name: JSON 2.0 Example, scripted section: {amounts~var obj=[123, 133, 1443, 112, 114]; for (var i=0; i<5; i++) insert(obj[i]);~, size~insert(Object.keys(value).length,key)~}, An array: [4, 5, 6, 7, 8]}" ;
-var j = "{ \"bob's array\": [1, 2, 3, 4], lamp #IGNORE THIS#light: \"7889 cents /*or anything really*/\", costs: {today: [1, 2, 3], yesterday: [4, 5, 6], script generated~var x=0; for(var i=0; i<20; i++)x+=i; console.log(x); var obj = {\"some key\": \"some value\"}; insert(obj);~}}" ;
+//var j = "{ \"bob's array\": [1, 2, 3, 4], lamp #IGNORE THIS#light: \"7889 cents /*or anything really*/\", costs: {today: [1, 2, 3], yesterday: [4, 5, 6], script generated~var x=0; for(var i=0; i<20; i++)x+=i; console.log(x); var obj = {\"some key\": \"some value\"}; insert(obj);~}}" ;
 //var j = "{fruits: [apples, pears, oranges], vegetables:[carrots, spinach, potato], stats:      {types: 2, total: 6}}" ;
 //var j = "{name: name here, \nsurname: surname here, script generated~for(var x=0; x<50; x+=0.5) insert(x);~, comments: are they possible?}" ;
-var j2 = new JSON2(j) ;
-console.log(j2.toString()) ;
+//var j2 = new JSON2(j) ;
+var json2 = new JSON2("{title: an example, #HELLO THERE#   OS Info~var os=require('os'); insertKeyValue('platform', os.platform()); insertKeyValue('release',os.release());~}", true) ;
+console.log(json2.toString()) ;
